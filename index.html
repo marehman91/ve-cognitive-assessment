@@ -156,6 +156,40 @@ h1{font-size:22px;font-weight:800;margin-bottom:4px;}
   </div>
 </div>
 
+
+<!-- Camera modal -->
+<div class="sintro" id="camModal" style="z-index:300">
+  <div class="sicard">
+    <div class="ico">&#128247;</div>
+    <h3>Camera Verification Required</h3>
+    <p>This is a proctored assessment. Your webcam must remain active throughout the test. Please allow camera access to continue.</p>
+    <video id="camLive" autoplay muted playsinline style="width:220px;height:165px;border-radius:10px;object-fit:cover;border:2px solid #C8102E;margin:0 auto 16px;display:block"></video>
+    <button class="btn" onclick="doCamOk()" style="margin-bottom:8px">&#10003; Camera Looks Good &mdash; Continue</button>
+    <p style="font-size:12px;color:#999;margin-top:8px">If camera is not visible, check browser permissions</p>
+  </div>
+</div>
+
+<!-- CNIC modal -->
+<div class="sintro" id="cnicModal" style="z-index:400">
+  <div class="sicard">
+    <div class="ico">&#128219;</div>
+    <h3>Identity Verification</h3>
+    <p>Hold your CNIC clearly in front of the camera and capture a photo to verify your identity.</p>
+    <video id="cnicVid" autoplay muted playsinline style="width:240px;height:165px;border-radius:10px;object-fit:cover;border:2px solid #C8102E;margin:0 auto 10px;display:block"></video>
+    <canvas id="cnicCanvas" style="display:none"></canvas>
+    <img id="cnicPrev" style="display:none;width:240px;height:165px;object-fit:cover;border-radius:10px;margin:0 auto 10px;border:2px solid #eee">
+    <br>
+    <button class="btn" id="capBtn" onclick="doCapture()" style="margin-bottom:8px">&#128247; Capture CNIC Photo</button>
+    <button class="btn" id="retakeBtn" onclick="doRetake()" style="display:none;background:#888;margin-bottom:8px">&#8617; Retake</button>
+    <button class="btn" id="proceedBtn" onclick="doProceed()" style="display:none">&#10003; Proceed to Test</button>
+  </div>
+</div>
+
+<!-- Cam preview corner -->
+<div id="camprev" style="position:fixed;bottom:16px;right:14px;width:90px;height:68px;border-radius:8px;overflow:hidden;border:2px solid #C8102E;display:none;z-index:50">
+  <video id="cpVid" autoplay muted playsinline style="width:100%;height:100%;object-fit:cover"></video>
+</div>
+
 <!-- Section intro -->
 <div class="sintro" id="sintro">
   <div class="sicard">
@@ -279,6 +313,8 @@ var cName="",cCNIC="",cEmail="",cPos="",cDept="";
 var curIdx=0,ans=new Array(allQ.length).fill(null);
 var flags=0,timerInt=null,timeLeft=1200,lastSec=null,siCb=null,done=false;
 
+var camStream=null;var camOn=false;var cnicDataUrl="";
+
 function doStart(){
   cName=document.getElementById("iname").value.trim();
   cCNIC=document.getElementById("icnic").value.trim();
@@ -297,6 +333,61 @@ function doStart(){
   if(!cPos){document.getElementById("epos").style.display="block";document.getElementById("ipos").style.borderColor="#C8102E";ok=false;}
   if(!ok)return;
   if(!document.getElementById("ccb").checked){alert("Please confirm the integrity statement.");return;}
+  // Request camera
+  navigator.mediaDevices.getUserMedia({video:true,audio:false})
+  .then(function(stream){
+    camStream=stream;camOn=true;
+    document.getElementById("camLive").srcObject=stream;
+    document.getElementById("camModal").classList.add("show");
+  })
+  .catch(function(err){
+    var box=document.getElementById("cam-err");
+    if(!box){
+      box=document.createElement("div");
+      box.id="cam-err";
+      box.style.cssText="background:#fff0f0;border:2px solid #C8102E;border-radius:8px;padding:14px;margin-top:12px;font-size:13px;color:#7f1d1d;line-height:1.6;";
+      document.getElementById("startBtn").before(box);
+    }
+    if(err.name==="NotAllowedError"||err.name==="PermissionDeniedError"){
+      box.innerHTML="<strong>Camera access denied.</strong><br>To fix:<br>1. Click the lock icon in the address bar<br>2. Set Camera to <strong>Allow</strong><br>3. Press <strong>F5</strong> to refresh<br>4. Click Begin again<br><br>Test cannot start without camera.";
+    } else if(err.name==="NotFoundError"){
+      box.innerHTML="<strong>No camera found.</strong><br>Please connect a webcam and try again.";
+    } else {
+      box.innerHTML="<strong>Camera error:</strong> "+err.message+"<br>Please check your camera and try again.";
+    }
+  });
+}
+
+function doCamOk(){
+  document.getElementById("camModal").classList.remove("show");
+  document.getElementById("cnicModal").classList.add("show");
+  if(camStream){document.getElementById("cnicVid").srcObject=camStream;}
+}
+
+function doCapture(){
+  var v=document.getElementById("cnicVid");
+  var c=document.getElementById("cnicCanvas");
+  c.width=v.videoWidth||320;c.height=v.videoHeight||240;
+  c.getContext("2d").drawImage(v,0,0);
+  cnicDataUrl=c.toDataURL("image/jpeg",0.7);
+  var p=document.getElementById("cnicPrev");
+  p.src=cnicDataUrl;p.style.display="block";
+  v.style.display="none";
+  document.getElementById("capBtn").style.display="none";
+  document.getElementById("retakeBtn").style.display="flex";
+  document.getElementById("proceedBtn").style.display="flex";
+}
+
+function doRetake(){
+  document.getElementById("cnicVid").style.display="block";
+  document.getElementById("cnicPrev").style.display="none";
+  document.getElementById("capBtn").style.display="flex";
+  document.getElementById("retakeBtn").style.display="none";
+  document.getElementById("proceedBtn").style.display="none";
+}
+
+function doProceed(){
+  document.getElementById("cnicModal").classList.remove("show");
   startTest();
 }
 
@@ -305,6 +396,9 @@ function startTest(){
   var a=document.getElementById("assessment");
   a.style.display="flex";
   document.getElementById("barName").textContent=cName;
+  if(camStream){
+    try{document.getElementById("cpVid").srcObject=camStream;document.getElementById("camprev").style.display="block";}catch(e){}
+  }
   try{
     var el=document.documentElement;
     if(el.requestFullscreen)el.requestFullscreen();
@@ -468,6 +562,7 @@ function finish(forced,reason){
     justification:recJ,
     time_used:timeUsed,
     flags:flags,
+    camera:camOn?"Yes":"No",
     submitted:forced?"Forced ("+reason+")":"Voluntary"
   };
   // Try fetch with no-cors
